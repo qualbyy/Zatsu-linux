@@ -1,0 +1,19 @@
+[Desktop Entry]
+Categories=Utility;System;KDE;Qt;
+Comment[ru_RU]=Минималистичная среда для глубокой концентрации и работы под KDE Plasma 6
+Comment=Минималистичная среда для глубокой концентрации и работы под KDE Plasma 6
+Exec=python3 /home/qualbyy/.gemini/antigravity/scratch/zatsu-focus/main.py
+GenericName[ru_RU]=Автономная среда фокусировки
+GenericName=Автономная среда фокусировки
+Icon=display
+Keywords=focus;plasma;kde;pomodoro;timer;productivity;strict;
+MimeType=
+Name[ru_RU]=Режим концентрации Zatsu
+Name=Режим концентрации Zatsu
+Path=/home/qualbyy/.gemini/antigravity/scratch/zatsu-focus
+StartupNotify=true
+Terminal=false
+TerminalOptions=
+Type=Application
+X-KDE-SubstituteUID=false
+X-KDE-Username=
