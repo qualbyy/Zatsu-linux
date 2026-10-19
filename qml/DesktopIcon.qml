@@ -126,18 +126,28 @@ Item {
             if (mouse.button === Qt.LeftButton) {
                 var distMoved = Math.abs(root.x - root.dragStartX) + Math.abs(root.y - root.dragStartY)
 
-                if (distMoved >= 20) {
-                    // Actual deliberate drag occurred: snap to clean desktop grid
-                    var startX = 48
-                    var startY = 48
-                    var spacingX = 116
-                    var spacingY = 116
+                if (distMoved >= 12) {
+                    var isFree = (config && config.desktopFreePositioning)
+                    var finalX = root.x
+                    var finalY = root.y
 
-                    var col = Math.max(0, Math.round((root.x - startX) / spacingX))
-                    var row = Math.max(0, Math.round((root.y - startY) / spacingY))
+                    if (isFree) {
+                        // Arbitrary / free-form positioning
+                        finalX = Math.max(16, Math.min(root.parent ? root.parent.width - root.width - 16 : 3000, Math.round(root.x)))
+                        finalY = Math.max(16, Math.min(root.parent ? root.parent.height - root.height - 60 : 3000, Math.round(root.y)))
+                    } else {
+                        // Clean desktop grid snap
+                        var startX = 48
+                        var startY = 48
+                        var spacingX = 116
+                        var spacingY = 116
 
-                    var finalX = startX + col * spacingX
-                    var finalY = startY + row * spacingY
+                        var col = Math.max(0, Math.round((root.x - startX) / spacingX))
+                        var row = Math.max(0, Math.round((root.y - startY) / spacingY))
+
+                        finalX = startX + col * spacingX
+                        finalY = startY + row * spacingY
+                    }
 
                     root.x = finalX
                     root.y = finalY
@@ -148,7 +158,7 @@ Item {
                         config.updateShortcutPosition(root.appId, finalX, finalY)
                     }
                 } else {
-                    // Click / micro-motion: strictly restore position without diagonal jump
+                    // Click / micro-motion: strictly restore position without jump
                     root.x = root.dragStartX
                     root.y = root.dragStartY
                 }

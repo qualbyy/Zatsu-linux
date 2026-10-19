@@ -842,81 +842,169 @@ Popup {
                 // Desktop Widgets Controls Card
                 Rectangle {
                     width: parent.width
-                    height: 84
+                    height: 124
                     radius: breezeTheme.radiusCard
                     color: breezeTheme.surfaceCard
                     border.color: breezeTheme.borderSubtle
                     border.width: 1
 
-                    Row {
+                    Column {
                         anchors.fill: parent
-                        anchors.margins: 10
-                        spacing: 16
+                        anchors.margins: 12
+                        spacing: 10
 
-                        // Clock Widget Switch
+                        // Row 1: Clock & Todo
                         Row {
-                            width: (parent.width - 16) / 2
-                            spacing: 8
-                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width
+                            spacing: 16
 
-                            Column {
-                                width: parent.width - 56
-                                spacing: 2
+                            // Clock Widget Switch
+                            Row {
+                                width: (parent.width - 16) / 2
+                                spacing: 8
                                 anchors.verticalCenter: parent.verticalCenter
-                                Text {
-                                    text: "Часы KDE 6"
-                                    font.family: breezeTheme.fontFamily
-                                    font.pixelSize: 12
-                                    font.weight: Font.Bold
-                                    color: breezeTheme.textPrimary
+
+                                Column {
+                                    width: parent.width - 56
+                                    spacing: 2
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    Text {
+                                        text: "Фокус-часы"
+                                        font.family: breezeTheme.fontFamily
+                                        font.pixelSize: 12
+                                        font.weight: Font.Bold
+                                        color: breezeTheme.textPrimary
+                                    }
+                                    Text {
+                                        text: "Большие часы по центру"
+                                        font.family: breezeTheme.fontFamily
+                                        font.pixelSize: 10
+                                        color: breezeTheme.textDim
+                                    }
                                 }
-                                Text {
-                                    text: "Большие часы и статус"
-                                    font.family: breezeTheme.fontFamily
-                                    font.pixelSize: 10
-                                    color: breezeTheme.textDim
+
+                                Switch {
+                                    checked: (config ? config.showDesktopClock : true)
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    onToggled: {
+                                        if (config) config.showDesktopClock = checked
+                                    }
                                 }
                             }
 
-                            Switch {
-                                checked: (config ? config.showDesktopClock : true)
+                            // Todo Widget Switch
+                            Row {
+                                width: (parent.width - 16) / 2
+                                spacing: 8
                                 anchors.verticalCenter: parent.verticalCenter
-                                onToggled: {
-                                    if (config) config.showDesktopClock = checked
+
+                                Column {
+                                    width: parent.width - 56
+                                    spacing: 2
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    Text {
+                                        text: "Виджет задач"
+                                        font.family: breezeTheme.fontFamily
+                                        font.pixelSize: 12
+                                        font.weight: Font.Bold
+                                        color: breezeTheme.textPrimary
+                                    }
+                                    Text {
+                                        text: "Цели и задачи дня (Todo)"
+                                        font.family: breezeTheme.fontFamily
+                                        font.pixelSize: 10
+                                        color: breezeTheme.textDim
+                                    }
+                                }
+
+                                Switch {
+                                    checked: (config ? config.showTodoWidget : true)
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    onToggled: {
+                                        if (config) config.showTodoWidget = checked
+                                    }
                                 }
                             }
                         }
 
-                        // Todo Widget Switch
-                        Row {
-                            width: (parent.width - 16) / 2
-                            spacing: 8
-                            anchors.verticalCenter: parent.verticalCenter
+                        // Divider line
+                        Rectangle {
+                            width: parent.width
+                            height: 1
+                            color: breezeTheme.borderSubtle
+                            opacity: 0.5
+                        }
 
-                            Column {
-                                width: parent.width - 56
-                                spacing: 2
+                        // Row 2: Media Player & Free Positioning
+                        Row {
+                            width: parent.width
+                            spacing: 16
+
+                            // Media Player Switch (Default OFF)
+                            Row {
+                                width: (parent.width - 16) / 2
+                                spacing: 8
                                 anchors.verticalCenter: parent.verticalCenter
-                                Text {
-                                    text: "Виджет задач"
-                                    font.family: breezeTheme.fontFamily
-                                    font.pixelSize: 12
-                                    font.weight: Font.Bold
-                                    color: breezeTheme.textPrimary
+
+                                Column {
+                                    width: parent.width - 56
+                                    spacing: 2
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    Text {
+                                        text: "Медиаплеер"
+                                        font.family: breezeTheme.fontFamily
+                                        font.pixelSize: 12
+                                        font.weight: Font.Bold
+                                        color: breezeTheme.textPrimary
+                                    }
+                                    Text {
+                                        text: "Плеер MPRIS и трек"
+                                        font.family: breezeTheme.fontFamily
+                                        font.pixelSize: 10
+                                        color: breezeTheme.textDim
+                                    }
                                 }
-                                Text {
-                                    text: "Задачи дня (Todo)"
-                                    font.family: breezeTheme.fontFamily
-                                    font.pixelSize: 10
-                                    color: breezeTheme.textDim
+
+                                Switch {
+                                    checked: (config ? config.showDesktopMedia : false)
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    onToggled: {
+                                        if (config) config.showDesktopMedia = checked
+                                    }
                                 }
                             }
 
-                            Switch {
-                                checked: (config ? config.showTodoWidget : true)
+                            // Free Positioning Switch
+                            Row {
+                                width: (parent.width - 16) / 2
+                                spacing: 8
                                 anchors.verticalCenter: parent.verticalCenter
-                                onToggled: {
-                                    if (config) config.showTodoWidget = checked
+
+                                Column {
+                                    width: parent.width - 56
+                                    spacing: 2
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    Text {
+                                        text: "Свободный порядок"
+                                        font.family: breezeTheme.fontFamily
+                                        font.pixelSize: 12
+                                        font.weight: Font.Bold
+                                        color: breezeTheme.textPrimary
+                                    }
+                                    Text {
+                                        text: "Произвольное перемещение"
+                                        font.family: breezeTheme.fontFamily
+                                        font.pixelSize: 10
+                                        color: breezeTheme.textDim
+                                    }
+                                }
+
+                                Switch {
+                                    checked: (config ? config.desktopFreePositioning : false)
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    onToggled: {
+                                        if (config) config.desktopFreePositioning = checked
+                                    }
                                 }
                             }
                         }

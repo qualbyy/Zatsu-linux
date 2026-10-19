@@ -124,6 +124,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "pomodoro_break_minutes": 5,
     "show_desktop_clock": True,
     "show_todo_widget": True,
+    "show_desktop_media": False,
+    "desktop_free_positioning": False,
+    "widget_positions": {},
     "inhibit_sleep": True,
     "focus_tasks": [
         {"id": "task_1", "text": "Сфокусироваться на главной задаче", "done": False}
@@ -328,7 +331,7 @@ class ConfigManager(QObject):
                 self.timerModeChanged.emit()
             elif key in ("pomodoro_work_minutes", "pomodoro_break_minutes"):
                 self.pomodoroChanged.emit()
-            elif key in ("show_desktop_clock", "show_todo_widget"):
+            elif key in ("show_desktop_clock", "show_todo_widget", "show_desktop_media", "desktop_free_positioning", "widget_positions"):
                 self.widgetsChanged.emit()
             elif key == "focus_tasks":
                 self.focusTasksChanged.emit()
@@ -455,6 +458,47 @@ class ConfigManager(QObject):
     @showTodoWidget.setter
     def showTodoWidget(self, val: bool):
         self.set("show_todo_widget", bool(val))
+
+    @Property(bool, notify=widgetsChanged)
+    def showDesktopMedia(self) -> bool:
+        return bool(self._data.get("show_desktop_media", False))
+
+    @showDesktopMedia.setter
+    def showDesktopMedia(self, val: bool):
+        self.set("show_desktop_media", bool(val))
+
+    @Property(bool, notify=widgetsChanged)
+    def desktopFreePositioning(self) -> bool:
+        return bool(self._data.get("desktop_free_positioning", False))
+
+    @desktopFreePositioning.setter
+    def desktopFreePositioning(self, val: bool):
+        self.set("desktop_free_positioning", bool(val))
+        self.set("grid_snap", not bool(val))
+
+    @Property("QVariantMap", notify=widgetsChanged)
+    def widgetPositions(self) -> Dict[str, Any]:
+        return dict(self._data.get("widget_positions", {}))
+
+    @Slot(str, result="QVariantMap")
+    def getWidgetPosition(self, widget_id: str) -> Dict[str, int]:
+        positions = self._data.get("widget_positions", {})
+        return positions.get(widget_id, {})
+
+    @Slot(str, int, int)
+    @Slot(str, float, float)
+    def setWidgetPosition(self, widget_id: str, x: Any, y: Any):
+        positions = dict(self._data.get("widget_positions", {}))
+        positions[widget_id] = {"x": int(round(x)), "y": int(round(y))}
+        self._data["widget_positions"] = positions
+        self.save()
+        self.widgetsChanged.emit()
+
+    @Slot()
+    def resetWidgetPositions(self):
+        self._data["widget_positions"] = {}
+        self.save()
+        self.widgetsChanged.emit()
 
     @Property(bool, notify=configChanged)
     def inhibitSleep(self) -> bool:

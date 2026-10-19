@@ -82,17 +82,78 @@ Item {
         return (m < 10 ? "0" : "") + m + ":" + (sec < 10 ? "0" : "") + sec
     }
 
+    // -----------------------------------------------------------------
+    // DESKTOP WIDGETS LAYOUT & POSITIONING LOGIC
+    // Supports both Clean Centered Grid and Arbitrary Free Positioning
+    // -----------------------------------------------------------------
+    readonly property bool isFreeLayout: (config && config.desktopFreePositioning)
+
+    readonly property real defaultClockX: Math.round((root.width - topClockWidget.width) / 2)
+    readonly property real defaultClockY: 48
+
+    readonly property real cardsTopY: (topClockWidget.visible ? (topClockWidget.y + topClockWidget.height + 36) : 64)
+
+    readonly property real defaultMediaX: {
+        if (mediaCard.visible && todoCard.visible) {
+            return Math.round((root.width - (380 * 2 + 24)) / 2)
+        } else {
+            return Math.round((root.width - 380) / 2)
+        }
+    }
+    readonly property real defaultMediaY: cardsTopY
+
+    readonly property real defaultTodoX: {
+        if (mediaCard.visible && todoCard.visible) {
+            return defaultMediaX + 380 + 24
+        } else {
+            return Math.round((root.width - 380) / 2)
+        }
+    }
+    readonly property real defaultTodoY: cardsTopY
+
     // =================================================================
     // 1. ULTRA-TALL CONDENSED DIGITAL CLOCK (HH:mm:ss) CENTERED TOP
     // =================================================================
     Item {
         id: topClockWidget
         visible: (config && config.showDesktopClock !== undefined) ? config.showDesktopClock : true
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.top: parent.top
-        anchors.topMargin: 48
         width: Math.max(500, timeDisplay.implicitWidth + 40)
         height: 140
+
+        x: isFreeLayout
+           ? ((config && config.widgetPositions["clock"] && config.widgetPositions["clock"].x !== undefined) ? config.widgetPositions["clock"].x : defaultClockX)
+           : defaultClockX
+        y: isFreeLayout
+           ? ((config && config.widgetPositions["clock"] && config.widgetPositions["clock"].y !== undefined) ? config.widgetPositions["clock"].y : defaultClockY)
+           : defaultClockY
+
+        Behavior on x {
+            enabled: !isFreeLayout || !clockDragArea.drag.active
+            NumberAnimation { duration: 250; easing.type: Easing.OutCubic }
+        }
+        Behavior on y {
+            enabled: !isFreeLayout || !clockDragArea.drag.active
+            NumberAnimation { duration: 250; easing.type: Easing.OutCubic }
+        }
+
+        MouseArea {
+            id: clockDragArea
+            anchors.fill: parent
+            enabled: isFreeLayout
+            drag.target: topClockWidget
+            drag.axis: Drag.XAndYAxis
+            drag.minimumX: 16
+            drag.minimumY: 16
+            drag.maximumX: Math.max(16, root.width - topClockWidget.width - 16)
+            drag.maximumY: Math.max(16, root.height - topClockWidget.height - 60)
+            cursorShape: isFreeLayout ? Qt.SizeAllCursor : Qt.ArrowCursor
+
+            onReleased: {
+                if (isFreeLayout && config) {
+                    config.setWidgetPosition("clock", Math.round(topClockWidget.x), Math.round(topClockWidget.y))
+                }
+            }
+        }
 
         Text {
             id: timeDisplay
@@ -101,7 +162,7 @@ Item {
             font.family: "DejaVu Serif Condensed, Liberation Serif, DejaVu Serif, serif"
             font.pixelSize: 112
             font.weight: Font.DemiBold
-            color: "#e8dfd1"
+            color: breezeTheme.textPrimary
             horizontalAlignment: Text.AlignHCenter
 
             // Gentle text shadow
@@ -124,43 +185,97 @@ Item {
     }
 
     // =================================================================
-    // 2. CENTER FLOATING CARDS (Media Player + Calendar)
-    // Dark golden-brown palette matching reference screenshot (#211d18 / #28231c)
+    // 2. MEDIA PLAYER WIDGET CARD (Default OFF, Draggable in Free Mode)
     // =================================================================
-    Row {
-        id: centerCardsRow
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.top: topClockWidget.bottom
-        anchors.topMargin: 36
-        spacing: 24
+    Rectangle {
+        id: mediaCard
+        width: 380
+        height: 380
+        radius: 20
+        visible: (config && config.showDesktopMedia !== undefined) ? config.showDesktopMedia : false
 
-        // -------------------------------------------------------------
-        // LEFT CARD: MEDIA PLAYER WIDGET
-        // -------------------------------------------------------------
-        Rectangle {
-            id: mediaCard
-            width: 380
-            height: 380
-            radius: 20
-            color: Qt.rgba(0.13, 0.115, 0.095, 0.92) // #211d18
-            border.color: Qt.rgba(0.24, 0.20, 0.16, 0.8)
-            border.width: 1.5
+        x: isFreeLayout
+           ? ((config && config.widgetPositions["media"] && config.widgetPositions["media"].x !== undefined) ? config.widgetPositions["media"].x : defaultMediaX)
+           : defaultMediaX
+        y: isFreeLayout
+           ? ((config && config.widgetPositions["media"] && config.widgetPositions["media"].y !== undefined) ? config.widgetPositions["media"].y : defaultMediaY)
+           : defaultMediaY
 
-            // Outer drop shadow
-            Rectangle {
-                anchors.fill: parent
-                anchors.margins: -1
-                radius: parent.radius + 1
-                color: "transparent"
-                border.color: Qt.rgba(0, 0, 0, 0.35)
-                border.width: 1
-                z: -1
+        Behavior on x {
+            enabled: !isFreeLayout || !mediaDragArea.drag.active
+            NumberAnimation { duration: 250; easing.type: Easing.OutCubic }
+        }
+        Behavior on y {
+            enabled: !isFreeLayout || !mediaDragArea.drag.active
+            NumberAnimation { duration: 250; easing.type: Easing.OutCubic }
+        }
+
+        color: breezeTheme.isDark
+               ? Qt.rgba(breezeTheme.background.r * 0.82, breezeTheme.background.g * 0.82, breezeTheme.background.b * 0.82, 0.94)
+               : Qt.rgba(1.0, 1.0, 1.0, 0.94)
+        border.color: Qt.rgba(breezeTheme.foreground.r, breezeTheme.foreground.g, breezeTheme.foreground.b, 0.18)
+        border.width: 1.5
+
+        // Drag handler on card background
+        MouseArea {
+            id: mediaDragArea
+            anchors.fill: parent
+            enabled: isFreeLayout
+            drag.target: mediaCard
+            drag.axis: Drag.XAndYAxis
+            drag.minimumX: 16
+            drag.minimumY: 16
+            drag.maximumX: Math.max(16, root.width - mediaCard.width - 16)
+            drag.maximumY: Math.max(16, root.height - mediaCard.height - 60)
+            cursorShape: isFreeLayout ? Qt.SizeAllCursor : Qt.ArrowCursor
+            z: -1
+
+            onReleased: {
+                if (isFreeLayout && config) {
+                    config.setWidgetPosition("media", Math.round(mediaCard.x), Math.round(mediaCard.y))
+                }
             }
+        }
 
-            Column {
-                anchors.fill: parent
-                anchors.margins: 22
-                spacing: 16
+        // Move badge when free layout is active
+        Rectangle {
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.margins: 12
+            width: 22
+            height: 22
+            radius: 11
+            color: Qt.rgba(breezeTheme.foreground.r, breezeTheme.foreground.g, breezeTheme.foreground.b, 0.15)
+            visible: isFreeLayout
+            z: 20
+
+            Image {
+                anchors.centerIn: parent
+                width: 12
+                height: 12
+                source: "image://icon/transform-move"
+                sourceSize.width: 12
+                sourceSize.height: 12
+                fillMode: Image.PreserveAspectFit
+                opacity: 0.8
+            }
+        }
+
+        // Outer drop shadow
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: -1
+            radius: parent.radius + 1
+            color: "transparent"
+            border.color: Qt.rgba(0, 0, 0, 0.35)
+            border.width: 1
+            z: -1
+        }
+
+        Column {
+            anchors.fill: parent
+            anchors.margins: 22
+            spacing: 16
 
                 // Top: Album Art and Track Info
                 Row {
@@ -403,10 +518,74 @@ Item {
             width: 380
             height: 380
             radius: 20
-            color: Qt.rgba(0.13, 0.115, 0.095, 0.92) // #211d18
-            border.color: Qt.rgba(0.24, 0.20, 0.16, 0.8)
-            border.width: 1.5
             visible: (config && config.showTodoWidget !== undefined) ? config.showTodoWidget : true
+
+            x: isFreeLayout
+               ? ((config && config.widgetPositions["todo"] && config.widgetPositions["todo"].x !== undefined) ? config.widgetPositions["todo"].x : defaultTodoX)
+               : defaultTodoX
+            y: isFreeLayout
+               ? ((config && config.widgetPositions["todo"] && config.widgetPositions["todo"].y !== undefined) ? config.widgetPositions["todo"].y : defaultTodoY)
+               : defaultTodoY
+
+            Behavior on x {
+                enabled: !isFreeLayout || !todoDragArea.drag.active
+                NumberAnimation { duration: 250; easing.type: Easing.OutCubic }
+            }
+            Behavior on y {
+                enabled: !isFreeLayout || !todoDragArea.drag.active
+                NumberAnimation { duration: 250; easing.type: Easing.OutCubic }
+            }
+
+            color: breezeTheme.isDark
+                   ? Qt.rgba(breezeTheme.background.r * 0.82, breezeTheme.background.g * 0.82, breezeTheme.background.b * 0.82, 0.94)
+                   : Qt.rgba(1.0, 1.0, 1.0, 0.94)
+            border.color: Qt.rgba(breezeTheme.foreground.r, breezeTheme.foreground.g, breezeTheme.foreground.b, 0.18)
+            border.width: 1.5
+
+            // Drag handler on card background
+            MouseArea {
+                id: todoDragArea
+                anchors.fill: parent
+                enabled: isFreeLayout
+                drag.target: todoCard
+                drag.axis: Drag.XAndYAxis
+                drag.minimumX: 16
+                drag.minimumY: 16
+                drag.maximumX: Math.max(16, root.width - todoCard.width - 16)
+                drag.maximumY: Math.max(16, root.height - todoCard.height - 60)
+                cursorShape: isFreeLayout ? Qt.SizeAllCursor : Qt.ArrowCursor
+                z: -1
+
+                onReleased: {
+                    if (isFreeLayout && config) {
+                        config.setWidgetPosition("todo", Math.round(todoCard.x), Math.round(todoCard.y))
+                    }
+                }
+            }
+
+            // Move badge when free layout is active
+            Rectangle {
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.margins: 12
+                width: 22
+                height: 22
+                radius: 11
+                color: Qt.rgba(breezeTheme.foreground.r, breezeTheme.foreground.g, breezeTheme.foreground.b, 0.15)
+                visible: isFreeLayout
+                z: 20
+
+                Image {
+                    anchors.centerIn: parent
+                    width: 12
+                    height: 12
+                    source: "image://icon/transform-move"
+                    sourceSize.width: 12
+                    sourceSize.height: 12
+                    fillMode: Image.PreserveAspectFit
+                    opacity: 0.8
+                }
+            }
 
             // Outer drop shadow
             Rectangle {
@@ -449,7 +628,7 @@ Item {
                             font.family: breezeTheme.fontFamily
                             font.pixelSize: 15
                             font.weight: Font.DemiBold
-                            color: "#e9e2d7"
+                            color: breezeTheme.textPrimary
                             anchors.verticalCenter: parent.verticalCenter
                         }
                     }
@@ -461,8 +640,8 @@ Item {
                         height: 24
                         width: pillText.implicitWidth + 16
                         radius: 12
-                        color: Qt.rgba(0.22, 0.19, 0.15, 0.8)
-                        border.color: Qt.rgba(0.35, 0.30, 0.24, 0.6)
+                        color: Qt.rgba(breezeTheme.foreground.r, breezeTheme.foreground.g, breezeTheme.foreground.b, 0.08)
+                        border.color: Qt.rgba(breezeTheme.foreground.r, breezeTheme.foreground.g, breezeTheme.foreground.b, 0.15)
                         border.width: 1
 
                         Text {
@@ -508,8 +687,8 @@ Item {
                             width: tasksListView.width - 6
                             height: 38
                             radius: 8
-                            color: taskMouse.containsMouse ? Qt.rgba(0.25, 0.21, 0.17, 0.6) : Qt.rgba(0.18, 0.15, 0.12, 0.4)
-                            border.color: taskMouse.containsMouse ? Qt.rgba(0.35, 0.30, 0.24, 0.7) : Qt.rgba(0.22, 0.19, 0.15, 0.4)
+                            color: taskMouse.containsMouse ? Qt.rgba(breezeTheme.foreground.r, breezeTheme.foreground.g, breezeTheme.foreground.b, 0.10) : Qt.rgba(breezeTheme.foreground.r, breezeTheme.foreground.g, breezeTheme.foreground.b, 0.05)
+                            border.color: taskMouse.containsMouse ? Qt.rgba(breezeTheme.foreground.r, breezeTheme.foreground.g, breezeTheme.foreground.b, 0.20) : Qt.rgba(breezeTheme.foreground.r, breezeTheme.foreground.g, breezeTheme.foreground.b, 0.10)
                             border.width: 1
 
                             MouseArea {
@@ -532,13 +711,13 @@ Item {
                                     radius: 5
                                     anchors.verticalCenter: parent.verticalCenter
                                     color: modelData.done ? breezeTheme.accent : "transparent"
-                                    border.color: modelData.done ? breezeTheme.accent : Qt.rgba(0.5, 0.44, 0.38, 0.8)
+                                    border.color: modelData.done ? breezeTheme.accent : Qt.rgba(breezeTheme.foreground.r, breezeTheme.foreground.g, breezeTheme.foreground.b, 0.3)
                                     border.width: 1.5
 
                                     Text {
                                         anchors.centerIn: parent
                                         text: "✓"
-                                        color: "#ffffff"
+                                        color: breezeTheme.textOnAccent
                                         font.pixelSize: 12
                                         font.bold: true
                                         visible: modelData.done
@@ -565,7 +744,7 @@ Item {
                                     font.family: breezeTheme.fontFamily
                                     font.pixelSize: 12
                                     font.strikeout: modelData.done
-                                    color: modelData.done ? Qt.rgba(0.65, 0.60, 0.55, 0.45) : "#e9e2d7"
+                                    color: modelData.done ? Qt.rgba(breezeTheme.foreground.r, breezeTheme.foreground.g, breezeTheme.foreground.b, 0.35) : breezeTheme.textPrimary
                                     elide: Text.ElideRight
                                 }
 
@@ -620,11 +799,10 @@ Item {
                         }
 
                         Text {
-                            text: "Нет активных задач
-Добавьте цель на текущую сессию"
+                            text: "Нет активных задач\nДобавьте цель на текущую сессию"
                             font.family: breezeTheme.fontFamily
                             font.pixelSize: 11
-                            color: Qt.rgba(0.7, 0.65, 0.6, 0.5)
+                            color: breezeTheme.textSecondary
                             horizontalAlignment: Text.AlignHCenter
                         }
                     }
@@ -635,8 +813,8 @@ Item {
                     width: parent.width
                     height: 36
                     radius: 8
-                    color: Qt.rgba(0.18, 0.15, 0.12, 0.8)
-                    border.color: newTaskInput.activeFocus ? breezeTheme.accent : Qt.rgba(0.32, 0.27, 0.22, 0.7)
+                    color: Qt.rgba(breezeTheme.background.r, breezeTheme.background.g, breezeTheme.background.b, 0.6)
+                    border.color: newTaskInput.activeFocus ? breezeTheme.accent : Qt.rgba(breezeTheme.foreground.r, breezeTheme.foreground.g, breezeTheme.foreground.b, 0.15)
                     border.width: 1
 
                     TextInput {
@@ -648,7 +826,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         font.family: breezeTheme.fontFamily
                         font.pixelSize: 12
-                        color: "#e9e2d7"
+                        color: breezeTheme.textPrimary
                         clip: true
                         selectByMouse: true
                         onAccepted: {
@@ -663,7 +841,7 @@ Item {
                             text: "+ Новая задача (Enter для добавления)..."
                             font.family: breezeTheme.fontFamily
                             font.pixelSize: 12
-                            color: Qt.rgba(0.65, 0.6, 0.55, 0.4)
+                            color: breezeTheme.textSecondary
                             visible: !newTaskInput.text && !newTaskInput.activeFocus
                             verticalAlignment: Text.AlignVCenter
                         }
@@ -677,14 +855,14 @@ Item {
                         width: 26
                         height: 26
                         radius: 6
-                        color: addBtnMouse.containsMouse ? breezeTheme.accent : Qt.rgba(0.28, 0.24, 0.19, 0.8)
+                        color: addBtnMouse.containsMouse ? breezeTheme.accent : Qt.rgba(breezeTheme.foreground.r, breezeTheme.foreground.g, breezeTheme.foreground.b, 0.12)
 
                         Text {
                             anchors.centerIn: parent
                             text: "+"
                             font.pixelSize: 16
                             font.bold: true
-                            color: "#ffffff"
+                            color: addBtnMouse.containsMouse ? breezeTheme.textOnAccent : breezeTheme.textPrimary
                         }
 
                         MouseArea {
@@ -703,7 +881,6 @@ Item {
                 }
             }
         }
-    }
 
     // Right-click context menu
     MouseArea {
@@ -771,9 +948,24 @@ Item {
         }
 
         Action {
-            text: "Выровнять по сетке"
+            text: (config && config.desktopFreePositioning) ? "✓ Произвольный порядок" : "Произвольный порядок"
+            onTriggered: {
+                if (config) config.desktopFreePositioning = !config.desktopFreePositioning
+            }
+        }
+
+        Action {
+            text: "Выровнять значки по сетке"
             onTriggered: {
                 if (config) config.alignShortcutsToGrid()
+            }
+        }
+
+        Action {
+            text: "Сбросить позиции виджетов"
+            enabled: isFreeLayout
+            onTriggered: {
+                if (config) config.resetWidgetPositions()
             }
         }
 
