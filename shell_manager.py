@@ -182,6 +182,26 @@ class ShellManager(QObject):
         self._is_active = False
         self._plasma_was_active = False
 
+        # Clean up any lingering KWin scripts to ensure window maximizing works unhindered
+        try:
+            import dbus
+            import xml.etree.ElementTree as ET
+            bus = dbus.SessionBus()
+            obj = bus.get_object("org.kde.KWin", "/Scripting")
+            intro_iface = dbus.Interface(obj, "org.freedesktop.DBus.Introspectable")
+            xml_data = intro_iface.Introspect(timeout=1.5)
+            root = ET.fromstring(xml_data)
+            children = [child.attrib.get("name") for child in root if child.tag == "node" and child.attrib.get("name")]
+            for child in children:
+                try:
+                    script_obj = bus.get_object("org.kde.KWin", f"/Scripting/{child}")
+                    script_run = dbus.Interface(script_obj, "org.kde.kwin.Script")
+                    script_run.stop(timeout=1.0)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
         # 1. Try systemctl user service first
         try:
             subprocess.run(["systemctl", "--user", "unmask", "plasma-plasmashell.service"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1.0)

@@ -464,6 +464,14 @@ class ConfigManager(QObject):
     def inhibitSleep(self, val: bool):
         self.set("inhibit_sleep", bool(val))
 
+    @Property(bool, notify=configChanged)
+    def doNotDisturb(self) -> bool:
+        return bool(self._data.get("do_not_disturb", True))
+
+    @doNotDisturb.setter
+    def doNotDisturb(self, val: bool):
+        self.set("do_not_disturb", bool(val))
+
     # --- Focus Tasks Operations ---
 
     @Property("QVariantList", notify=focusTasksChanged)

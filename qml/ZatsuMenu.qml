@@ -734,10 +734,10 @@ Popup {
                                 }
 
                                 Switch {
-                                    checked: (systemService && systemService.doNotDisturb) ? true : false
+                                    checked: (systemService ? systemService.doNotDisturb : false)
                                     anchors.verticalCenter: parent.verticalCenter
                                     onToggled: {
-                                        if (systemService) systemService.toggleDoNotDisturb()
+                                        if (systemService) systemService.doNotDisturb = checked
                                     }
                                 }
                             }

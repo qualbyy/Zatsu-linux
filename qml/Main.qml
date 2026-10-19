@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Window
 import QtQuick.Controls
+import org.kde.layershell as LayerShell
 
 Window {
     id: mainWindow
@@ -381,5 +382,19 @@ Window {
     // 9. Always-on-top Mini-Timer Floating Overlay
     MiniTimerOverlay {
         id: miniTimerOverlay
+    }
+
+    // 10. Native Wayland LayerShell Panel Strut Window (Reserves bottom taskbar exclusion zone)
+    Window {
+        id: panelStrutWindow
+        visible: Qt.platform.pluginName.indexOf("wayland") !== -1
+        width: Screen.width
+        height: Math.max(1, Math.round(focusPanel.scaledHeight))
+        color: "transparent"
+        flags: Qt.Window | Qt.FramelessWindowHint | Qt.WindowDoesNotAcceptFocus | Qt.WindowTransparentForInput
+
+        LayerShell.Window.layer: LayerShell.Window.LayerBottom
+        LayerShell.Window.anchors: LayerShell.Window.AnchorBottom | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight
+        LayerShell.Window.exclusionZone: Math.round(focusPanel.scaledHeight)
     }
 }

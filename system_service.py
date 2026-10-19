@@ -142,8 +142,12 @@ class SystemService(QObject):
         self._layout_timer.start()
         self._volume_timer.start()
 
-        # Activate Do Not Disturb if configured
+        # Clean up any lingering or orphaned KWin scripts from past runs/crashes
+        self._cleanup_kwin_scripts()
         import atexit
+        atexit.register(self._cleanup_kwin_scripts)
+
+        # Activate Do Not Disturb if configured
         atexit.register(self.restore_do_not_disturb)
         if self._do_not_disturb:
             self.enable_do_not_disturb()
@@ -263,91 +267,34 @@ class SystemService(QObject):
         # Also trigger persistent work area enforcement
         self.enforceWindowWorkArea()
 
-    @Slot()
-    def enforceWindowWorkArea(self):
-        """Keeps client windows above the desktop and respects the FocusPanel taskbar work area upon opening or maximizing."""
-        # 1. Update Plasma StrutManager so all desktop clients know the usable work area
+    def _cleanup_kwin_scripts(self):
+        """Safely stops and unloads any orphaned KWin scripts to ensure window maximizing is never impaired."""
         try:
             import dbus
+            import xml.etree.ElementTree as ET
             bus = dbus.SessionBus()
-            kwin = bus.get_object("org.kde.KWin", "/KWin")
-            kwin_iface = dbus.Interface(kwin, "org.kde.KWin")
-            active_out = str(kwin_iface.activeOutputName()) or "eDP-1"
+            obj = bus.get_object("org.kde.KWin", "/Scripting")
+            intro_iface = dbus.Interface(obj, "org.freedesktop.DBus.Introspectable")
+            xml_data = intro_iface.Introspect(timeout=1.5)
+            root = ET.fromstring(xml_data)
+            children = [child.attrib.get("name") for child in root if child.tag == "node" and child.attrib.get("name")]
+            for child in children:
+                try:
+                    script_obj = bus.get_object("org.kde.KWin", f"/Scripting/{child}")
+                    script_run = dbus.Interface(script_obj, "org.kde.kwin.Script")
+                    script_run.stop(timeout=1.0)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
-            obj = bus.get_object("org.kde.plasmashell", "/StrutManager")
-            strut_iface = dbus.Interface(obj, "org.kde.PlasmaShell.StrutManager")
-            rect = strut_iface.availableScreenRect(active_out)
-            # rect: (x, y, width, height)
-            scale = float(self.config.get("panel_height_scale", 1.0))
-            panel_h = int(48 * scale) + 8
-            # Clamped work area reserving panel_h at the bottom
-            target_h = max(200, 864 - panel_h)
-            new_rect = dbus.Struct((dbus.Int32(0), dbus.Int32(0), dbus.Int32(sw), dbus.Int32(target_h)), signature='(iiii)')
-            strut_iface.setAvailableScreenRect("zatsu-focus", active_out, new_rect)
-        except Exception as e:
-            logger.debug("StrutManager update notice: %s", e)
-
-        # 2. Install persistent KWin Script that clamps window geometry on maximize and move
-        try:
-            import tempfile, dbus
-            scale = float(self.config.get("panel_height_scale", 1.0))
-            panel_h = int(48 * scale) + 8
-            js_code = """
-            function enforce(w) {
-                if (!w || !w.normalWindow) return;
-                if (w.resourceClass && (w.resourceClass.indexOf('zatsu') !== -1 || w.resourceClass.indexOf('Zatsu') !== -1)) {
-                    w.keepBelow = true;
-                    return;
-                }
-                var screenH = workspace.virtualScreenSize.height;
-                var panelH = __PANEL_H__;
-                var maxBottom = screenH - panelH;
-                var geo = w.frameGeometry;
-                if (geo.y + geo.height > maxBottom) {
-                    var newH = Math.max(100, maxBottom - geo.y);
-                    w.setMaximize(false, false);
-                    w.frameGeometry = {
-                        x: geo.x,
-                        y: geo.y,
-                        width: geo.width,
-                        height: newH
-                    };
-                }
-            }
-            var list = workspace.windowList();
-            for (var i = 0; i < list.length; i++) {
-                enforce(list[i]);
-                (function(target) {
-                    target.frameGeometryChanged.connect(function() { enforce(target); });
-                    target.maximizedAboutToChange.connect(function(m) { if (m) { enforce(target); } });
-                })(list[i]);
-            }
-            workspace.windowAdded.connect(function(w) {
-                enforce(w);
-                w.frameGeometryChanged.connect(function() { enforce(w); });
-                w.maximizedAboutToChange.connect(function(m) { if (m) { enforce(w); } });
-            });
-            """.replace("__PANEL_H__", str(panel_h))
-            with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
-                f.write(js_code)
-                tmp_path = f.name
-            try:
-                bus = dbus.SessionBus()
-                kwin_scripting = bus.get_object("org.kde.KWin", "/Scripting")
-                script_iface = dbus.Interface(kwin_scripting, "org.kde.kwin.Scripting")
-                script_id = script_iface.loadScript(tmp_path)
-                script_obj = bus.get_object("org.kde.KWin", f"/Scripting/Script{script_id}")
-                script_run = dbus.Interface(script_obj, "org.kde.kwin.Script")
-                script_run.run()
-                # Leave script running inside KWin compositor to continuously enforce boundaries!
-            finally:
-                if os.path.exists(tmp_path):
-                    try:
-                        os.remove(tmp_path)
-                    except Exception:
-                        pass
-        except Exception as e:
-            logger.debug("Failed to enforce window work area: %s", e)
+    @Slot()
+    def enforceWindowWorkArea(self):
+        """
+        Cleans up any stray KWin compositor scripts so window maximizing is never hijacked.
+        On Wayland, panel work area is natively enforced by panelStrutWindow (LayerShellQt exclusionZone).
+        """
+        self._cleanup_kwin_scripts()
 
     # --- Keyboard Layout ---
 
@@ -939,44 +886,57 @@ class SystemService(QObject):
     def doNotDisturb(self) -> bool:
         return self._do_not_disturb
 
+    @doNotDisturb.setter
+    def doNotDisturb(self, val: bool):
+        val = bool(val)
+        if self._do_not_disturb == val:
+            return
+        self._do_not_disturb = val
+        self.config.set("do_not_disturb", self._do_not_disturb)
+        if self._do_not_disturb:
+            self.enable_do_not_disturb()
+        else:
+            self.restore_do_not_disturb()
+        self.doNotDisturbChanged.emit()
+
     @Slot()
     def toggleDoNotDisturb(self):
-        try:
-            self._do_not_disturb = not self._do_not_disturb
-            self.config.set("do_not_disturb", self._do_not_disturb)
-            if self._do_not_disturb:
-                self.enable_do_not_disturb()
-            else:
-                self.restore_do_not_disturb()
-            self.doNotDisturbChanged.emit()
-        except Exception as e:
-            logger.error("Failed to toggle Do Not Disturb: %s", e)
+        self.doNotDisturb = not self._do_not_disturb
 
     def enable_do_not_disturb(self):
-        """Inhibits KDE Plasma desktop notifications."""
+        """Inhibits KDE Plasma desktop notifications safely without reviving stopped plasmashell."""
+        if self._dnd_cookie > 0:
+            return
         logger.info("Enabling KDE Plasma Do Not Disturb mode...")
         try:
             import dbus
             bus = dbus.SessionBus()
+            # Do NOT call Inhibit if no notification server is running!
+            # Otherwise DBus auto-activates plasma_waitforname and restarts plasmashell!
+            if not bus.name_has_owner("org.freedesktop.Notifications"):
+                logger.info("org.freedesktop.Notifications has no owner (plasmashell is stopped). Notifications are already silent.")
+                return
             notif = bus.get_object("org.freedesktop.Notifications", "/org/freedesktop/Notifications")
             iface = dbus.Interface(notif, "org.freedesktop.Notifications")
-            self._dnd_cookie = int(iface.Inhibit("zatsu-focus", "Сессия глубокой концентрации Zatsu Focus", {}))
+            self._dnd_cookie = int(iface.Inhibit("zatsu-focus", "Сессия глубокой концентрации Zatsu Focus", {}, timeout=2.0))
             logger.info("D-Bus notification inhibition active (cookie: %s)", self._dnd_cookie)
         except Exception as e:
             logger.debug("Could not inhibit notifications via D-Bus: %s", e)
 
     def restore_do_not_disturb(self):
-        """Restores notifications upon focus session exit."""
-        logger.info("Restoring KDE Plasma notifications...")
+        """Restores notifications upon focus session exit or DND disable."""
         cookie = self._dnd_cookie
         self._dnd_cookie = 0
         if cookie > 0:
+            logger.info("Restoring KDE Plasma notifications...")
             try:
                 import dbus
                 bus = dbus.SessionBus()
+                if not bus.name_has_owner("org.freedesktop.Notifications"):
+                    return
                 notif = bus.get_object("org.freedesktop.Notifications", "/org/freedesktop/Notifications")
                 iface = dbus.Interface(notif, "org.freedesktop.Notifications")
-                iface.UnInhibit(cookie)
+                iface.UnInhibit(cookie, timeout=2.0)
                 logger.info("D-Bus notification uninhibited successfully (cookie: %s)", cookie)
             except Exception as e:
                 logger.debug("Failed to UnInhibit notification: %s", e)
