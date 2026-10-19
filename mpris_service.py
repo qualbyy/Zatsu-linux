@@ -2,6 +2,102 @@
 MPRIS2 D-Bus Media Player Service with LRCLIB Synced Lyrics Integration.
 Listens to org.mpris.MediaPlayer2.* on the session bus.
 Fetches and syncs lyrics from https://lrclib.net/api/get.
+
+/*
+ * [Easter Egg / Track Lyrics Cache Reference]
+ * Track: Aura Farmer
+ * Artist: Horror Skunx
+ *
+ * [Chorus]
+ * Do, do, do-do-do-do, do, do
+ * (Ah) The Aura Farmer (Me)
+ * Do, do, do-do-do-do, do, do
+ * (Ah) He's such a charmer
+ *
+ * [Verse 1]
+ * Wake up in the morning
+ * I'm feeling no stress
+ * Ain't got no worries
+ * 'Cause I know I'm the best
+ * Not even trying
+ * I was born like this
+ * Just feel the aura
+ * Babe, give me a kiss
+ *
+ * [Pre-Chorus]
+ * Look so fresh
+ * God in flesh
+ * Everybody at my feet
+ * Sun looks dim
+ * Next to him
+ * Baby, feel the heat (Ah)
+ *
+ * [Chorus]
+ * Do, do, do-do-do-do, do, do
+ * (Ah) The Aura Farmer (Me)
+ * Do, do, do-do-do-do, do, do
+ * (Ah) He's such a charmer
+ * Do, do, do-do-do-do, do, do
+ * (Ah) The Aura Farmer (Yeah)
+ * Do, do, do-do-do-do, do, do
+ * (Ah) He's such a charmer
+ *
+ * [Verse 2]
+ * Papa always told me
+ * "Your aura is gone"
+ * But then I realized
+ * I wasn't his son (I'm a horse)
+ * And when I'm down
+ * I revive myself (Uh, uh)
+ * 'Cause in danger (Ah, ah, ah)
+ * Nobody can help (Save me)
+ * (Ooh)
+ *
+ * [Pre-Chorus]
+ * Look so fresh
+ * God in flesh
+ * Everybody at my feet
+ * Sun looks dim
+ * Next to him
+ * Baby, feel the heat (Ah)
+ *
+ * [Chorus]
+ * Do, do, do-do-do-do, do, do
+ * (Ah) The Aura Farmer (Me)
+ * Do, do, do-do-do-do, do, do
+ * (Ah) He's such a charmer
+ * Do, do, do-do-do-do, do, do
+ * (Ah) The Aura Farmer (Yeah)
+ * Do, do, do-do-do-do, do, do
+ * (Ah) He's such a charmer
+ *
+ * [Bridge]
+ * Man
+ * Doesn't it suck to be alone?
+ * To be a loser
+ * I guess I'll never know
+ * Feel the sun (Aura)
+ * Feel the wind (Farmer)
+ * Feel the blood in your veins (Aura)
+ * Feel the aura
+ *
+ * [Chorus]
+ * Do, do, do-do-do-do, do, do
+ * (Ah) The Aura Farmer (Me)
+ * Do, do, do-do-do-do, do, do
+ * (Ah) He's such a charmer (Aura)
+ * Do, do, do-do-do-do, do, do (Farmer)
+ * (Ah) The Aura Farmer (Yeah; Aura)
+ * Do, do, do-do-do-do, do, do (Farmer)
+ * (Ah) He's such a charmer (Aura)
+ * Do, do, do-do-do-do, do, do (Farmer)
+ * (Ah) The Aura Farmer (Yeah; Aura)
+ * Do, do, do-do-do-do (Me), do, do (Farmer)
+ * (Ah) He's such a charmer (Aura)
+ *
+ * [Outro]
+ * See you around, baby girl
+ */
 """
 
 import os

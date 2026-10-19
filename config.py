@@ -1,6 +1,103 @@
 """
 Configuration manager for Zatsu Focus.
 Stores and synchronizes settings in ~/.config/zatsu-focus/config.json.
+
+/*
+[Chorus]
+Do, do, do-do-do-do, do, do
+(Ah) The Aura Farmer (Me)
+Do, do, do-do-do-do, do, do
+(Ah) He's such a charmer
+
+[Verse 1]
+Wake up in the morning
+I'm feeling no stress
+Ain't got no worries
+'Cause I know I'm the best
+Not even trying
+I was born like this
+Just feel the aura
+Babe, give me a kiss
+
+[Pre-Chorus]
+Look so fresh
+God in flesh
+Everybody at my feet
+Sun looks dim
+Next to him
+Baby, feel the heat (Ah)
+
+[Chorus]
+Do, do, do-do-do-do, do, do
+(Ah) The Aura Farmer (Me)
+Do, do, do-do-do-do, do, do
+(Ah) He's such a charmer
+Do, do, do-do-do-do, do, do
+(Ah) The Aura Farmer (Yeah)
+Do, do, do-do-do-do, do, do
+(Ah) He's such a charmer
+You might also like
+Master of Humanity (Lord Verity)
+Horror Skunx
+It’s me, It’s Verity
+Horror Skunx
+Be My Friend (The Verity Band)
+Horror Skunx
+[Verse 2]
+Papa always told me
+"Your aura is gone"
+But then I realized
+I wasn't his son (I'm a horse)
+And when I'm down
+I revive myself (Uh, uh)
+'Cause in danger (Ah, ah, ah)
+Nobody can help (Save me)
+(Ooh)
+
+[Pre-Chorus]
+Look so fresh
+God in flesh
+Everybody at my feet
+Sun looks dim
+Next to him
+Baby, feel the heat (Ah)
+
+[Chorus]
+Do, do, do-do-do-do, do, do
+(Ah) The Aura Farmer (Me)
+Do, do, do-do-do-do, do, do
+(Ah) He's such a charmer
+Do, do, do-do-do-do, do, do
+(Ah) The Aura Farmer (Yeah)
+Do, do, do-do-do-do, do, do
+(Ah) He's such a charmer
+[Bridge]
+Man
+Doesn't it suck to be alone?
+To be a loser
+I guess I'll never know
+Feel the sun (Aura)
+Feel the wind (Farmer)
+Feel the blood in your veins (Aura)
+Feel the aura
+
+[Chorus]
+Do, do, do-do-do-do, do, do
+(Ah) The Aura Farmer (Me)
+Do, do, do-do-do-do, do, do
+(Ah) He's such a charmer (Aura)
+Do, do, do-do-do-do, do, do (Farmer)
+(Ah) The Aura Farmer (Yeah; Aura)
+Do, do, do-do-do-do, do, do (Farmer)
+(Ah) He's such a charmer (Aura)
+Do, do, do-do-do-do, do, do (Farmer)
+(Ah) He's such a charmer (Yeah; Aura)
+Do, do, do-do-do-do (Me), do, do (Farmer)
+(Ah) He's such a charmer (Aura)
+
+[Outro]
+See you around, baby girl
+*/
 """
 
 import os
@@ -41,6 +138,23 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "sound_on_timer_end": True,
     "grid_snap": True,
     "grid_size": 96,
+    "ambient_sound": "",
+    "ambient_volume": 45,
+    "web_blocker_enabled": False,
+    "blocked_websites": [
+        "youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be",
+        "reddit.com", "www.reddit.com", "old.reddit.com",
+        "vk.com", "m.vk.com",
+        "twitter.com", "x.com",
+        "twitch.tv", "www.twitch.tv",
+        "instagram.com", "www.instagram.com",
+        "tiktok.com", "www.tiktok.com",
+        "facebook.com", "www.facebook.com",
+        "web.telegram.org",
+        "netflix.com", "www.netflix.com"
+    ],
+    "do_not_disturb": True,
+    "show_mini_timer": False,
     "desktop_shortcuts": [
         {
             "id": "dolphin",
@@ -80,6 +194,15 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         }
     ],
     "allowed_background_apps": [
+        "plasmashell",
+        "kwin_wayland",
+        "kwin_x11",
+        "powerdevil",
+        "org_kde_powerdevil",
+        "kdeconnectd",
+        "kdeconnect-indicator",
+        "xdg-desktop-portal",
+        "xdg-desktop-portal-kde",
         "dolphin",
         "kate",
         "kcalc",
@@ -102,7 +225,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "lock_screen": "Meta+L",
         "strict_mode": "Meta+S",
         "reset_timer": "Meta+R",
-        "clipboard": "Meta+V"
+        "clipboard": "Meta+V",
+        "scratchpad": "Meta+N",
+        "mini_timer": "Meta+T"
     }
 }
 
@@ -115,16 +240,17 @@ class ConfigManager(QObject):
     configChanged = Signal()
     shortcutsChanged = Signal()
     allowedAppsChanged = Signal()
-    strictModeChanged = Signal(bool)
-    oledBlackoutChanged = Signal(bool)
-    panelScaleChanged = Signal(float)
+    strictModeChanged = Signal()
+    oledBlackoutChanged = Signal()
+    panelScaleChanged = Signal()
     wallpaperChanged = Signal()
-    sessionDurationChanged = Signal(int)
-    timerModeChanged = Signal(str)
+    sessionDurationChanged = Signal()
+    timerModeChanged = Signal()
     pomodoroChanged = Signal()
     focusTasksChanged = Signal()
     widgetsChanged = Signal()
     hotkeysChanged = Signal()
+    miniTimerChanged = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -195,11 +321,11 @@ class ConfigManager(QObject):
             self.configChanged.emit()
 
             if key == "strict_mode":
-                self.strictModeChanged.emit(bool(value))
+                self.strictModeChanged.emit()
             elif key == "session_duration_minutes":
-                self.sessionDurationChanged.emit(int(value))
+                self.sessionDurationChanged.emit()
             elif key == "timer_mode":
-                self.timerModeChanged.emit(str(value))
+                self.timerModeChanged.emit()
             elif key in ("pomodoro_work_minutes", "pomodoro_break_minutes"):
                 self.pomodoroChanged.emit()
             elif key in ("show_desktop_clock", "show_todo_widget"):
@@ -207,9 +333,11 @@ class ConfigManager(QObject):
             elif key == "focus_tasks":
                 self.focusTasksChanged.emit()
             elif key == "oled_secondary_blackout":
-                self.oledBlackoutChanged.emit(bool(value))
+                self.oledBlackoutChanged.emit()
             elif key == "panel_height_scale":
-                self.panelScaleChanged.emit(float(value))
+                self.panelScaleChanged.emit()
+            elif key == "show_mini_timer":
+                self.miniTimerChanged.emit()
             elif key in ("wallpaper_mode", "custom_wallpaper_path"):
                 self.wallpaperChanged.emit()
             elif key == "hotkeys":
@@ -262,6 +390,25 @@ class ConfigManager(QObject):
     @Property(str, notify=hotkeysChanged)
     def hotkeyClipboard(self) -> str:
         return self.hotkeys.get("clipboard", "Meta+V")
+
+    @Property(str, notify=hotkeysChanged)
+    def hotkeyScratchpad(self) -> str:
+        return self.hotkeys.get("scratchpad", "Meta+N")
+
+    @Property(str, notify=hotkeysChanged)
+    def hotkeyMiniTimer(self) -> str:
+        return self.hotkeys.get("mini_timer", "Meta+T")
+
+    # --- Mini Floating Timer Window ---
+
+    @Property(bool, notify=miniTimerChanged)
+    def showMiniTimer(self) -> bool:
+        return bool(self._data.get("show_mini_timer", False))
+
+    @showMiniTimer.setter
+    def showMiniTimer(self, val: bool):
+        self.set("show_mini_timer", bool(val))
+        self.miniTimerChanged.emit()
 
     # --- Session Duration Property ---
 
@@ -442,13 +589,14 @@ class ConfigManager(QObject):
             self.shortcutsChanged.emit()
 
     @Slot(str, int, int)
-    def updateShortcutPosition(self, app_id: str, x: int, y: int):
+    @Slot(str, float, float)
+    def updateShortcutPosition(self, app_id: str, x: Any, y: Any):
         shortcuts = list(self._data.get("desktop_shortcuts", []))
         updated = False
         for s in shortcuts:
             if s.get("id") == app_id:
-                s["x"] = int(x)
-                s["y"] = int(y)
+                s["x"] = int(round(x))
+                s["y"] = int(round(y))
                 updated = True
                 break
         if updated:

@@ -22,7 +22,7 @@ def _import_pyqt6():
     global IS_PYSIDE, IS_PYQT, QT_BINDING, QT_VERSION
     global QtCore, QtGui, QtWidgets, QObject, Signal, Slot, Property
     global QUrl, QTimer, QPoint, QSize, QRect, Qt, QDateTime, QTime, QDate
-    global QGuiApplication, QIcon, QPixmap, QImage, QPainter, QColor, QFont, QScreen
+    global QGuiApplication, QIcon, QPixmap, QImage, QPainter, QColor, QFont, QScreen, QKeySequence
     global QApplication, QFileDialog, QMessageBox, QQuickImageProvider, QQuickView
     global QQmlApplicationEngine, QQmlContext, QQmlComponent
 
@@ -34,7 +34,7 @@ def _import_pyqt6():
     )
     from PyQt6.QtGui import (
         QGuiApplication, QIcon, QPixmap, QImage, QPainter, QColor, QFont,
-        QScreen
+        QScreen, QKeySequence
     )
     from PyQt6.QtWidgets import (
         QApplication, QFileDialog, QMessageBox
@@ -52,7 +52,7 @@ def _import_pyside6():
     global IS_PYSIDE, IS_PYQT, QT_BINDING, QT_VERSION
     global QtCore, QtGui, QtWidgets, QObject, Signal, Slot, Property
     global QUrl, QTimer, QPoint, QSize, QRect, Qt, QDateTime, QTime, QDate
-    global QGuiApplication, QIcon, QPixmap, QImage, QPainter, QColor, QFont, QScreen
+    global QGuiApplication, QIcon, QPixmap, QImage, QPainter, QColor, QFont, QScreen, QKeySequence
     global QApplication, QFileDialog, QMessageBox, QQuickImageProvider, QQuickView
     global QQmlApplicationEngine, QQmlContext, QQmlComponent
 
@@ -64,7 +64,7 @@ def _import_pyside6():
     )
     from PySide6.QtGui import (
         QGuiApplication, QIcon, QPixmap, QImage, QPainter, QColor, QFont,
-        QScreen
+        QScreen, QKeySequence
     )
     from PySide6.QtWidgets import (
         QApplication, QFileDialog, QMessageBox

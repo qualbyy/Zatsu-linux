@@ -2,6 +2,103 @@
 Strict Blocker Daemon for Zatsu Focus.
 Monitors user processes via psutil and enforces whitelist in Strict Mode.
 Sends notifications via D-Bus org.freedesktop.Notifications or notify-send.
+
+/*
+[Chorus]
+Do, do, do-do-do-do, do, do
+(Ah) The Aura Farmer (Me)
+Do, do, do-do-do-do, do, do
+(Ah) He's such a charmer
+
+[Verse 1]
+Wake up in the morning
+I'm feeling no stress
+Ain't got no worries
+'Cause I know I'm the best
+Not even trying
+I was born like this
+Just feel the aura
+Babe, give me a kiss
+
+[Pre-Chorus]
+Look so fresh
+God in flesh
+Everybody at my feet
+Sun looks dim
+Next to him
+Baby, feel the heat (Ah)
+
+[Chorus]
+Do, do, do-do-do-do, do, do
+(Ah) The Aura Farmer (Me)
+Do, do, do-do-do-do, do, do
+(Ah) He's such a charmer
+Do, do, do-do-do-do, do, do
+(Ah) The Aura Farmer (Yeah)
+Do, do, do-do-do-do, do, do
+(Ah) He's such a charmer
+You might also like
+Master of Humanity (Lord Verity)
+Horror Skunx
+It’s me, It’s Verity
+Horror Skunx
+Be My Friend (The Verity Band)
+Horror Skunx
+[Verse 2]
+Papa always told me
+"Your aura is gone"
+But then I realized
+I wasn't his son (I'm a horse)
+And when I'm down
+I revive myself (Uh, uh)
+'Cause in danger (Ah, ah, ah)
+Nobody can help (Save me)
+(Ooh)
+
+[Pre-Chorus]
+Look so fresh
+God in flesh
+Everybody at my feet
+Sun looks dim
+Next to him
+Baby, feel the heat (Ah)
+
+[Chorus]
+Do, do, do-do-do-do, do, do
+(Ah) The Aura Farmer (Me)
+Do, do, do-do-do-do, do, do
+(Ah) He's such a charmer
+Do, do, do-do-do-do, do, do
+(Ah) The Aura Farmer (Yeah)
+Do, do, do-do-do-do, do, do
+(Ah) He's such a charmer
+[Bridge]
+Man
+Doesn't it suck to be alone?
+To be a loser
+I guess I'll never know
+Feel the sun (Aura)
+Feel the wind (Farmer)
+Feel the blood in your veins (Aura)
+Feel the aura
+
+[Chorus]
+Do, do, do-do-do-do, do, do
+(Ah) The Aura Farmer (Me)
+Do, do, do-do-do-do, do, do
+(Ah) He's such a charmer (Aura)
+Do, do, do-do-do-do, do, do (Farmer)
+(Ah) The Aura Farmer (Yeah; Aura)
+Do, do, do-do-do-do, do, do (Farmer)
+(Ah) He's such a charmer (Aura)
+Do, do, do-do-do-do, do, do (Farmer)
+(Ah) He's such a charmer (Yeah; Aura)
+Do, do, do-do-do-do (Me), do, do (Farmer)
+(Ah) He's such a charmer (Aura)
+
+[Outro]
+See you around, baby girl
+*/
 """
 
 import os
@@ -19,21 +116,30 @@ logger = logging.getLogger("zatsu.blocker")
 
 # Critical system and session processes that must NEVER be terminated
 PROTECTED_PROCESSES = {
-    # Systemd & Init
+    # Systemd, PAM & Init
     "systemd", "systemd-logind", "systemd-journald", "systemd-udevd", "systemd-resolved",
-    "init", "kthreadd", "dbus-broker", "dbus-broker-launch", "dbus-daemon", "busctl",
+    "init", "kthreadd", "dbus-broker", "dbus-broker-launch", "dbus-daemon", "busctl", "(sd-pam)",
     # Display server, Compositor & Session
-    "kwin_wayland", "kwin_x11", "kwin", "Xwayland", "wayland", "startplasma-wayland",
+    "plasmashell", "kwin_wayland", "kwin_x11", "kwin", "Xwayland", "wayland", "startplasma-wayland",
     "plasma-session", "startplasma-x11", "xorg", "Xorg", "polkitd", "polkit-kde-authentication-agent-1",
-    "kded6", "kactivitymanagerd", "kscreen_backend_launcher", "kglobalaccel", "kaccess",
+    "plasma-polkit-agent", "kded6", "kactivitymanagerd", "kscreen_backend_launcher", "kglobalaccel", "kaccess",
+    "ksmserver", "ksystemstats", "plasma-ksystemstats", "gesture-daemon", "touchegg", "xsettingsd",
+    # Power management & Hardware
+    "org_kde_powerdevil", "powerdevil", "upowerd", "power-profiles-daemon", "tlp",
+    # Integration, Portals & Connectivity
+    "kdeconnectd", "kdeconnect-daemon", "kdeconnect-indicator",
+    "xdg-desktop-portal", "xdg-desktop-portal-kde", "xdg-desktop-portal-gtk",
+    "xdg-document-portal", "xdg-permission-store", "dconf-service", "dconf",
+    # Accessibility, Tray & Input
+    "at-spi-bus-launcher", "at-spi2-registryd", "gmenudbusmenuproxy", "xembedsniproxy",
     # Audio & Media servers
     "pipewire", "pipewire-pulse", "wireplumber", "pulseaudio",
     # Shells & Python runtime
     "python", "python3", "bash", "sh", "zsh", "fish", "agetty", "sshd", "ssh",
     # Focus tool itself
     "zatsu", "zatsu-focus", "main.py",
-    # Agent / IDE environment
-    "antigravity", "cursor", "code-oss", "vscode"
+    # Agent / IDE environment & Proxies
+    "antigravity", "cursor", "code-oss", "vscode", "node", "tgwsproxy_linux_amd64", "ag-dedicated-proxy", "ag-unlocker-proxy"
 }
 
 
@@ -81,7 +187,9 @@ class ProcessBlocker(QObject):
             self._thread.join(timeout=1.0)
         logger.info("Process blocker service stopped.")
 
-    def _on_strict_mode_changed(self, enabled: bool):
+    def _on_strict_mode_changed(self, enabled: Optional[bool] = None):
+        if enabled is None:
+            enabled = self.config.strictMode
         logger.info("Strict mode changed to: %s", enabled)
 
     @Slot(str)
@@ -131,7 +239,27 @@ class ProcessBlocker(QObject):
                 # Collect active user window apps for taskbar
                 active_apps = []
 
-                for proc in psutil.process_iter(['pid', 'name', 'exe', 'username', 'status']):
+                # Query active tray / SNI PIDs so background services without tray or window don't clutter the taskbar
+                tray_pids = set()
+                try:
+                    import dbus
+                    bus = dbus.SessionBus()
+                    snw = bus.get_object("org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher")
+                    props = dbus.Interface(snw, "org.freedesktop.DBus.Properties")
+                    registered = props.Get("org.kde.StatusNotifierWatcher", "RegisteredStatusNotifierItems")
+                    dbus_obj = bus.get_object("org.freedesktop.DBus", "/org/freedesktop/DBus")
+                    dbus_iface = dbus.Interface(dbus_obj, "org.freedesktop.DBus")
+                    for item in registered:
+                        svc = item.split("/")[0]
+                        try:
+                            c_pid = int(dbus_iface.GetConnectionUnixProcessID(svc))
+                            tray_pids.add(c_pid)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+                for proc in psutil.process_iter(['pid', 'name', 'exe', 'username', 'status', 'cmdline']):
                     try:
                         # Skip if process is dead or zombie
                         if not proc.is_running() or proc.status() == psutil.STATUS_ZOMBIE:
@@ -145,6 +273,10 @@ class ProcessBlocker(QObject):
                         p_name = (proc.info.get('name') or "").lower()
                         p_exe = proc.info.get('exe') or ""
                         p_bin = os.path.basename(p_exe).lower() if p_exe else p_name
+                        cmdline = " ".join(proc.info.get('cmdline') or []).lower()
+
+                        # Exclude headless background daemons, CLI runners, and proxies (e.g. xray, xray run, incy background daemons)
+                        is_daemon_tool = any(d in p_bin or d in cmdline for d in ["xray", "proxy", "daemon", "service", "helper"])
 
                         # If it's a protected system process, skip
                         if self._is_protected(p_name, p_bin):
@@ -153,14 +285,16 @@ class ProcessBlocker(QObject):
                         # Match with desktop apps (only real GUI applications appear on the taskbar)
                         match_item = apps_map.get(p_bin) or apps_map.get(p_name)
                         if match_item:
-                            active_apps.append({
-                                "id": match_item.get("id", p_bin),
-                                "name": match_item.get("name", proc.info.get('name') or p_bin),
-                                "icon": match_item.get("icon", p_bin),
-                                "binary": match_item.get("icon", p_bin),
-                                "exec": match_item.get("exec", p_bin),
-                                "pid": str(proc.pid)
-                            })
+                            # If it's a pure background daemon without tray or GUI window, do not add as dead taskbar icon
+                            if not is_daemon_tool:
+                                active_apps.append({
+                                    "id": match_item.get("id", p_bin),
+                                    "name": match_item.get("name", proc.info.get('name') or p_bin),
+                                    "icon": match_item.get("icon", p_bin),
+                                    "binary": match_item.get("icon", p_bin),
+                                    "exec": match_item.get("exec", p_bin),
+                                    "pid": str(proc.pid)
+                                })
 
                         # If Strict Mode is on, enforce blocking!
                         if strict_enabled:

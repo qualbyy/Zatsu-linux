@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e242b"/>
+      <stop offset="100%" stop-color="#111519"/>
+    </linearGradient>
+    <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3daee9"/>
+      <stop offset="50%" stop-color="#1d99f3"/>
+      <stop offset="100%" stop-color="#27ae60"/>
+    </linearGradient>
+    <linearGradient id="glowGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3daee9" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#3daee9" stop-opacity="0.0"/>
+    </linearGradient>
+    <filter id="dropShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <!-- Base Rounded Squircle with Shadow -->
+  <rect x="10" y="10" width="108" height="108" rx="28" fill="url(#bgGrad)" filter="url(#dropShadow)" stroke="#31363b" stroke-width="1.5"/>
+
+  <!-- Inner Soft Ambient Glow -->
+  <circle cx="64" cy="64" r="44" fill="url(#glowGrad)"/>
+
+  <!-- Outer Concentric Focus Ring (Dashed Arc) -->
+  <circle cx="64" cy="64" r="38" fill="none" stroke="#3daee9" stroke-width="2.5" stroke-dasharray="12 6 24 6" opacity="0.4" stroke-linecap="round"/>
+
+  <!-- Middle Vibrant Progress / Focus Arc -->
+  <circle cx="64" cy="64" r="30" fill="none" stroke="url(#ringGrad)" stroke-width="4.5" stroke-linecap="round" stroke-dasharray="140 48" transform="rotate(-45 64 64)"/>
+
+  <!-- Center Zen Circle (Focus Dot & Crosshair) -->
+  <circle cx="64" cy="64" r="14" fill="#1b2126" stroke="#3daee9" stroke-width="2"/>
+  <circle cx="64" cy="64" r="6" fill="#3daee9"/>
+
+  <!-- Focus Target Reticles (Top, Bottom, Left, Right) -->
+  <line x1="64" y1="18" x2="64" y2="24" stroke="#3daee9" stroke-width="2.5" stroke-linecap="round" opacity="0.8"/>
+  <line x1="64" y1="104" x2="64" y2="110" stroke="#3daee9" stroke-width="2.5" stroke-linecap="round" opacity="0.8"/>
+  <line x1="18" y1="64" x2="24" y2="64" stroke="#3daee9" stroke-width="2.5" stroke-linecap="round" opacity="0.8"/>
+  <line x1="104" y1="64" x2="110" y2="64" stroke="#3daee9" stroke-width="2.5" stroke-linecap="round" opacity="0.8"/>
+</svg>

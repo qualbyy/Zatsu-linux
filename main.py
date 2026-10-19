@@ -13,7 +13,8 @@ from typing import Optional
 
 from qt_compat import (
     QApplication, QGuiApplication, QQmlApplicationEngine, QUrl,
-    QObject, Slot, Signal, Property, Qt, QFileDialog, QIcon, QtCore
+    QObject, Slot, Signal, Property, Qt, QFileDialog, QIcon, QtCore,
+    QKeySequence, QtGui
 )
 
 from config import ConfigManager
@@ -23,6 +24,10 @@ from mpris_service import MprisService
 from system_service import SystemService
 from shell_manager import ShellManager
 from icon_provider import BreezeIconProvider
+from ambient_service import AmbientSoundService
+from web_blocker import WebBlocker
+from stats_service import StatsService
+from scratchpad_service import ScratchpadService
 
 logging.basicConfig(
     level=logging.INFO,
@@ -30,13 +35,78 @@ logging.basicConfig(
 )
 logger = logging.getLogger("zatsu.main")
 
+CYRILLIC_TO_LATIN = {
+    'й': 'Q', 'ц': 'W', 'у': 'E', 'к': 'R', 'е': 'T', 'н': 'Y', 'г': 'U', 'ш': 'I', 'щ': 'O', 'з': 'P', 'х': '[', 'ъ': ']',
+    'ф': 'A', 'ы': 'S', 'в': 'D', 'а': 'F', 'п': 'G', 'р': 'H', 'о': 'J', 'л': 'K', 'д': 'L', 'ж': ';', 'э': "'",
+    'я': 'Z', 'ч': 'X', 'с': 'C', 'м': 'V', 'и': 'B', 'т': 'N', 'ь': 'M', 'б': ',', 'ю': '.'
+}
+
+
+def extract_key_combo(event) -> str:
+    key = event.key()
+    mods = event.modifiers()
+
+    # Modifier-only combinations (e.g. Alt+Shift or Ctrl+Shift for layout switching)
+    if key in (Qt.Key.Key_Shift, Qt.Key.Key_Alt, Qt.Key.Key_Control, Qt.Key.Key_Meta, Qt.Key.Key_Super_L, Qt.Key.Key_Super_R):
+        if key == Qt.Key.Key_Shift and (mods & Qt.KeyboardModifier.AltModifier):
+            return "Alt+Shift"
+        if key == Qt.Key.Key_Alt and (mods & Qt.KeyboardModifier.ShiftModifier):
+            return "Alt+Shift"
+        if key == Qt.Key.Key_Shift and (mods & Qt.KeyboardModifier.ControlModifier):
+            return "Ctrl+Shift"
+        if key == Qt.Key.Key_Control and (mods & Qt.KeyboardModifier.ShiftModifier):
+            return "Ctrl+Shift"
+        return ""
+
+    parts = []
+    if mods & Qt.KeyboardModifier.ControlModifier:
+        parts.append("Ctrl")
+    if mods & Qt.KeyboardModifier.AltModifier:
+        parts.append("Alt")
+    if mods & Qt.KeyboardModifier.ShiftModifier:
+        parts.append("Shift")
+    if (mods & Qt.KeyboardModifier.MetaModifier) or key in (Qt.Key.Key_Super_L, Qt.Key.Key_Super_R, Qt.Key.Key_Meta):
+        parts.append("Meta")
+
+    key_name = ""
+    if key == Qt.Key.Key_Space:
+        key_name = "Space"
+    elif key == Qt.Key.Key_Escape:
+        key_name = "Escape"
+    elif key == Qt.Key.Key_Tab:
+        key_name = "Tab"
+    elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+        key_name = "Return"
+    elif Qt.Key.Key_F1 <= key <= Qt.Key.Key_F12:
+        key_name = f"F{key - Qt.Key.Key_F1 + 1}"
+    elif Qt.Key.Key_A <= key <= Qt.Key.Key_Z:
+        key_name = chr(key)
+    elif Qt.Key.Key_0 <= key <= Qt.Key.Key_9:
+        key_name = chr(key)
+    else:
+        txt = event.text().lower()
+        if txt in CYRILLIC_TO_LATIN:
+            key_name = CYRILLIC_TO_LATIN[txt]
+        else:
+            s = QKeySequence(key).toString().upper()
+            if s and len(s) <= 12:
+                key_name = s
+
+    if not key_name:
+        return ""
+    if not parts:
+        return key_name
+    return "+".join(parts + [key_name])
+
 
 class GlobalKeyFilter(QObject):
     """
-    Application-level event filter to reliably intercept standalone Meta (Super) key taps.
+    Application-level event filter to reliably intercept standalone Meta (Super) key taps,
+    manage hotkey recording, and execute global shortcuts layout-independently (EN/RU).
     """
-    def __init__(self, system_service, parent=None):
+    def __init__(self, config_manager, system_service, parent=None):
         super().__init__(parent)
+        self.config = config_manager
         self.system_svc = system_service
         self._meta_pressed = False
         self._other_key_pressed = False
@@ -44,13 +114,98 @@ class GlobalKeyFilter(QObject):
     def eventFilter(self, obj, event):
         t = event.type()
         if t == QtCore.QEvent.Type.KeyPress:
+            if event.isAutoRepeat():
+                return super().eventFilter(obj, event)
+
             key = event.key()
+
+            # 1. Check if user is recording a custom hotkey in settings
+            recording_action = self.system_svc.recordingAction
+            if recording_action:
+                if key == Qt.Key.Key_Escape:
+                    self.system_svc.stopRecordingHotkey()
+                    return True
+                combo = extract_key_combo(event)
+                # Ignore isolated modifier presses during recording
+                if key not in (Qt.Key.Key_Super_L, Qt.Key.Key_Super_R, Qt.Key.Key_Meta,
+                               Qt.Key.Key_Control, Qt.Key.Key_Alt, Qt.Key.Key_Shift) and combo:
+                    logger.info("Recorded hotkey for %s: %s", recording_action, combo)
+                    self.config.setHotkey(recording_action, combo)
+                    self.system_svc.stopRecordingHotkey()
+                    return True
+                return True
+
+            # 2. Track Meta Key State
             if key in (Qt.Key.Key_Super_L, Qt.Key.Key_Super_R, Qt.Key.Key_Meta):
                 self._meta_pressed = True
                 self._other_key_pressed = False
             else:
                 self._other_key_pressed = True
+
+            # 3. Layout-Independent Hotkey Dispatch (Cyrillic & Latin)
+            combo = extract_key_combo(event)
+            if combo:
+                combo_upper = combo.upper()
+                hotkeys = self.config.hotkeys
+
+                def matches_hk(action_name: str) -> bool:
+                    target = hotkeys.get(action_name, "").upper()
+                    if not target:
+                        return False
+                    return (combo_upper == target or
+                            combo_upper.replace("META", "SUPER") == target.replace("META", "SUPER") or
+                            combo_upper.replace("SUPER", "META") == target.replace("SUPER", "META"))
+
+                if matches_hk("quick_runner"):
+                    self._other_key_pressed = True
+                    logger.info("[zatsu.keyfilter]: QuickRunner triggered (%s)", combo)
+                    self.system_svc.quickRunnerRequested.emit()
+                    return True
+                elif matches_hk("menu"):
+                    self._other_key_pressed = True
+                    logger.info("[zatsu.keyfilter]: Menu triggered (%s)", combo)
+                    self.system_svc.menuRequested.emit()
+                    return True
+                elif matches_hk("layout_switch"):
+                    self._other_key_pressed = True
+                    logger.info("[zatsu.keyfilter]: Layout switch triggered (%s)", combo)
+                    self.system_svc.nextKeyboardLayout()
+                    return True
+                elif matches_hk("lock_screen"):
+                    self._other_key_pressed = True
+                    logger.info("[zatsu.keyfilter]: Lock screen triggered (%s)", combo)
+                    self.system_svc.lockScreen()
+                    return True
+                elif matches_hk("strict_mode"):
+                    self._other_key_pressed = True
+                    logger.info("[zatsu.keyfilter]: Strict mode toggle triggered (%s)", combo)
+                    self.config.strictMode = not self.config.strictMode
+                    return True
+                elif matches_hk("reset_timer"):
+                    self._other_key_pressed = True
+                    logger.info("[zatsu.keyfilter]: Reset timer triggered (%s)", combo)
+                    self.system_svc.reset_timer()
+                    return True
+                elif matches_hk("clipboard"):
+                    self._other_key_pressed = True
+                    logger.info("[zatsu.keyfilter]: Clipboard triggered (%s)", combo)
+                    self.system_svc.openKlipper()
+                    return True
+                elif matches_hk("scratchpad"):
+                    self._other_key_pressed = True
+                    logger.info("[zatsu.keyfilter]: Scratchpad triggered (%s)", combo)
+                    self.system_svc.scratchpadRequested.emit()
+                    return True
+                elif matches_hk("mini_timer"):
+                    self._other_key_pressed = True
+                    logger.info("[zatsu.keyfilter]: Mini-timer toggle triggered (%s)", combo)
+                    self.system_svc.miniTimerRequested.emit()
+                    return True
+
         elif t == QtCore.QEvent.Type.KeyRelease:
+            if event.isAutoRepeat():
+                return super().eventFilter(obj, event)
+
             key = event.key()
             if key in (Qt.Key.Key_Super_L, Qt.Key.Key_Super_R, Qt.Key.Key_Meta):
                 if self._meta_pressed and not self._other_key_pressed:
@@ -59,6 +214,7 @@ class GlobalKeyFilter(QObject):
                     self.system_svc.metaKeyTriggered.emit()
                     return True
                 self._meta_pressed = False
+
         return super().eventFilter(obj, event)
 
 
@@ -167,6 +323,15 @@ def main():
     mpris = MprisService()
     system_svc = SystemService(config_mgr)
     blocker = ProcessBlocker(config_mgr, system_svc, desktop_scanner=scanner)
+    ambient_svc = AmbientSoundService(config_mgr)
+    web_blocker = WebBlocker(config_mgr, system_svc)
+    stats_svc = StatsService(config_mgr)
+    scratchpad_svc = ScratchpadService()
+
+    # Synchronize timer milestones with analytics
+    system_svc.pomodoroCycleChanged.connect(lambda cycles: stats_svc.recordPomodoroCycle())
+    system_svc.sessionFinished.connect(lambda: stats_svc.recordSessionCompleted())
+
     main_ctrl = MainController(config_mgr, scanner, system_svc)
 
     # QML Engine Setup
@@ -187,9 +352,13 @@ def main():
     root_context.setContextProperty("systemService", system_svc)
     root_context.setContextProperty("shellManager", shell_mgr)
     root_context.setContextProperty("mainController", main_ctrl)
+    root_context.setContextProperty("ambientService", ambient_svc)
+    root_context.setContextProperty("webBlocker", web_blocker)
+    root_context.setContextProperty("statsService", stats_svc)
+    root_context.setContextProperty("scratchpadService", scratchpad_svc)
 
-    # Install Global Key Filter for Meta (Super) key
-    key_filter = GlobalKeyFilter(system_svc)
+    # Install Global Key Filter for Meta (Super) key and layout-independent hotkeys
+    key_filter = GlobalKeyFilter(config_mgr, system_svc)
     app.installEventFilter(key_filter)
 
     # Load Main QML Window
@@ -234,6 +403,8 @@ def main():
 
     # Clean up
     blocker.stop()
+    web_blocker.restore()
+    ambient_svc.stop()
     shell_mgr.restore_plasma()
     sys.exit(ret)
 

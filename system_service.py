@@ -60,17 +60,30 @@ class SystemService(QObject):
     timerTick = Signal()
     sessionFinished = Signal()
     metaKeyTriggered = Signal()
+    menuRequested = Signal()
+    quickRunnerRequested = Signal()
+    layoutSwitchRequested = Signal()
+    lockScreenRequested = Signal()
+    strictModeToggleRequested = Signal()
+    resetTimerRequested = Signal()
+    clipboardRequested = Signal()
+    recordingActionChanged = Signal(str)
     calendarRequested = Signal()
     volumeChanged = Signal()
     pomodoroPhaseChanged = Signal(str)
     pomodoroCycleChanged = Signal(int)
+    doNotDisturbChanged = Signal()
+    scratchpadRequested = Signal()
+    miniTimerRequested = Signal()
+    clipboardHistoryChanged = Signal()
 
     def __init__(self, config_manager, parent=None):
         super().__init__(parent)
         self.config = config_manager
 
-        # Connect to config updates so wallpaper changes immediately
+        # Connect to config updates so wallpaper and work area update immediately
         self.config.wallpaperChanged.connect(self._on_config_wallpaper_changed)
+        self.config.panelScaleChanged.connect(self.enforceWindowWorkArea)
 
         # Audio Volume state
         self._volume = 65
@@ -79,6 +92,13 @@ class SystemService(QObject):
         # Pomodoro State
         self._pomodoro_phase = "work"  # "work" or "break"
         self._pomodoro_cycles = 0
+
+        # Hotkey Recording state
+        self._recording_action = ""
+
+        # KDE Do Not Disturb (Notification inhibition)
+        self._dnd_cookie = 0
+        self._do_not_disturb = bool(self.config.get("do_not_disturb", True))
 
         # Theme Colors
         self._bg_color = "#211d18"
@@ -121,6 +141,12 @@ class SystemService(QObject):
         self._second_timer.start()
         self._layout_timer.start()
         self._volume_timer.start()
+
+        # Activate Do Not Disturb if configured
+        import atexit
+        atexit.register(self.restore_do_not_disturb)
+        if self._do_not_disturb:
+            self.enable_do_not_disturb()
 
     def _on_config_wallpaper_changed(self):
         logger.info("Wallpaper config changed! Emitting wallpaperChanged signal...")
@@ -195,6 +221,133 @@ class SystemService(QObject):
                 self._system_wallpaper = c
                 break
         self.wallpaperChanged.emit()
+
+    @Slot()
+    def ensureDesktopWindowBottom(self):
+        """Ensures the Zatsu main desktop window stays on the bottom layer behind all apps."""
+        try:
+            import tempfile, dbus
+            js_code = """
+            var windows = workspace.windowList();
+            for (var i = 0; i < windows.length; i++) {
+                var w = windows[i];
+                if (w.caption && (w.caption.indexOf('Zatsu') !== -1 || (w.resourceClass && w.resourceClass.indexOf('zatsu') !== -1))) {
+                    w.keepBelow = true;
+                }
+            }
+            """
+            with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
+                f.write(js_code)
+                tmp_path = f.name
+            try:
+                bus = dbus.SessionBus()
+                kwin_scripting = bus.get_object("org.kde.KWin", "/Scripting")
+                script_iface = dbus.Interface(kwin_scripting, "org.kde.kwin.Scripting")
+                script_id = script_iface.loadScript(tmp_path)
+                script_obj = bus.get_object("org.kde.KWin", f"/Scripting/Script{script_id}")
+                script_run = dbus.Interface(script_obj, "org.kde.kwin.Script")
+                script_run.run()
+                try:
+                    script_iface.unloadScript(f"Script{script_id}")
+                except Exception:
+                    pass
+            finally:
+                if os.path.exists(tmp_path):
+                    try:
+                        os.remove(tmp_path)
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.debug("Failed to set desktop window keepBelow: %s", e)
+
+        # Also trigger persistent work area enforcement
+        self.enforceWindowWorkArea()
+
+    @Slot()
+    def enforceWindowWorkArea(self):
+        """Keeps client windows above the desktop and respects the FocusPanel taskbar work area upon opening or maximizing."""
+        # 1. Update Plasma StrutManager so all desktop clients know the usable work area
+        try:
+            import dbus
+            bus = dbus.SessionBus()
+            kwin = bus.get_object("org.kde.KWin", "/KWin")
+            kwin_iface = dbus.Interface(kwin, "org.kde.KWin")
+            active_out = str(kwin_iface.activeOutputName()) or "eDP-1"
+
+            obj = bus.get_object("org.kde.plasmashell", "/StrutManager")
+            strut_iface = dbus.Interface(obj, "org.kde.PlasmaShell.StrutManager")
+            rect = strut_iface.availableScreenRect(active_out)
+            # rect: (x, y, width, height)
+            scale = float(self.config.get("panel_height_scale", 1.0))
+            panel_h = int(48 * scale) + 8
+            # Clamped work area reserving panel_h at the bottom
+            target_h = max(200, 864 - panel_h)
+            new_rect = dbus.Struct((dbus.Int32(0), dbus.Int32(0), dbus.Int32(sw), dbus.Int32(target_h)), signature='(iiii)')
+            strut_iface.setAvailableScreenRect("zatsu-focus", active_out, new_rect)
+        except Exception as e:
+            logger.debug("StrutManager update notice: %s", e)
+
+        # 2. Install persistent KWin Script that clamps window geometry on maximize and move
+        try:
+            import tempfile, dbus
+            scale = float(self.config.get("panel_height_scale", 1.0))
+            panel_h = int(48 * scale) + 8
+            js_code = """
+            function enforce(w) {
+                if (!w || !w.normalWindow) return;
+                if (w.resourceClass && (w.resourceClass.indexOf('zatsu') !== -1 || w.resourceClass.indexOf('Zatsu') !== -1)) {
+                    w.keepBelow = true;
+                    return;
+                }
+                var screenH = workspace.virtualScreenSize.height;
+                var panelH = __PANEL_H__;
+                var maxBottom = screenH - panelH;
+                var geo = w.frameGeometry;
+                if (geo.y + geo.height > maxBottom) {
+                    var newH = Math.max(100, maxBottom - geo.y);
+                    w.setMaximize(false, false);
+                    w.frameGeometry = {
+                        x: geo.x,
+                        y: geo.y,
+                        width: geo.width,
+                        height: newH
+                    };
+                }
+            }
+            var list = workspace.windowList();
+            for (var i = 0; i < list.length; i++) {
+                enforce(list[i]);
+                (function(target) {
+                    target.frameGeometryChanged.connect(function() { enforce(target); });
+                    target.maximizedAboutToChange.connect(function(m) { if (m) { enforce(target); } });
+                })(list[i]);
+            }
+            workspace.windowAdded.connect(function(w) {
+                enforce(w);
+                w.frameGeometryChanged.connect(function() { enforce(w); });
+                w.maximizedAboutToChange.connect(function(m) { if (m) { enforce(w); } });
+            });
+            """.replace("__PANEL_H__", str(panel_h))
+            with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
+                f.write(js_code)
+                tmp_path = f.name
+            try:
+                bus = dbus.SessionBus()
+                kwin_scripting = bus.get_object("org.kde.KWin", "/Scripting")
+                script_iface = dbus.Interface(kwin_scripting, "org.kde.kwin.Scripting")
+                script_id = script_iface.loadScript(tmp_path)
+                script_obj = bus.get_object("org.kde.KWin", f"/Scripting/Script{script_id}")
+                script_run = dbus.Interface(script_obj, "org.kde.kwin.Script")
+                script_run.run()
+                # Leave script running inside KWin compositor to continuously enforce boundaries!
+            finally:
+                if os.path.exists(tmp_path):
+                    try:
+                        os.remove(tmp_path)
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.debug("Failed to enforce window work area: %s", e)
 
     # --- Keyboard Layout ---
 
@@ -295,36 +448,55 @@ class SystemService(QObject):
             except Exception as e:
                 logger.error("Failed to launch Dolphin: %s", e)
 
-    @Slot()
-    def openKlipper(self):
-        """Invokes Klipper clipboard history context menu via D-Bus."""
-        # 1. Try busctl
-        try:
-            subprocess.Popen([
-                "busctl", "--user", "call", "org.kde.klipper", "/klipper",
-                "org.kde.klipper.klipper", "showContextMenu"
-            ])
-            return
-        except Exception:
-            pass
-
-        # 2. Try qdbus / qdbus-qt6
-        for cmd in ["qdbus", "qdbus-qt6"]:
-            try:
-                subprocess.Popen([cmd, "org.kde.klipper", "/klipper", "showContextMenu"])
-                return
-            except Exception:
-                pass
-
-        # 3. Direct python dbus call
+    @Property("QVariantList", notify=clipboardHistoryChanged)
+    def clipboardHistory(self) -> List[str]:
+        """Returns clipboard history items from Klipper or clipboard."""
         try:
             import dbus
             bus = dbus.SessionBus()
             klipper = bus.get_object("org.kde.klipper", "/klipper")
             iface = dbus.Interface(klipper, "org.kde.klipper.klipper")
-            iface.showContextMenu()
+            items = iface.getClipboardHistoryMenu()
+            return [str(it) for it in items if str(it).strip()]
+        except Exception:
+            return []
+
+    @Slot(str)
+    def selectClipboardItem(self, text: str):
+        """Sets clipboard item as current active clipboard content."""
+        try:
+            import dbus
+            bus = dbus.SessionBus()
+            klipper = bus.get_object("org.kde.klipper", "/klipper")
+            iface = dbus.Interface(klipper, "org.kde.klipper.klipper")
+            iface.setClipboardContents(text)
+        except Exception:
+            pass
+        self.copyToClipboard(text)
+
+    @Slot()
+    def openKlipper(self):
+        """Invokes Klipper clipboard history context menu via D-Bus."""
+        # 1. Direct python dbus call (org.kde.klipper.klipper.showKlipperPopupMenu)
+        try:
+            import dbus
+            bus = dbus.SessionBus()
+            klipper = bus.get_object("org.kde.klipper", "/klipper")
+            iface = dbus.Interface(klipper, "org.kde.klipper.klipper")
+            iface.showKlipperPopupMenu()
         except Exception as e:
             logger.debug("Failed to call Klipper D-Bus: %s", e)
+
+        # 2. Try busctl fallback
+        try:
+            subprocess.Popen([
+                "busctl", "--user", "call", "org.kde.klipper", "/klipper",
+                "org.kde.klipper.klipper", "showKlipperPopupMenu"
+            ])
+        except Exception:
+            pass
+
+        self.clipboardHistoryChanged.emit()
 
     @Slot(str)
     def launchApp(self, exec_cmd: str):
@@ -336,43 +508,112 @@ class SystemService(QObject):
 
     @Slot(str, str)
     def activateWindow(self, pid_str: str, exec_cmd: str):
-        """Activates and raises an existing window to the foreground."""
+        """Activates and raises an existing window to the foreground without launching duplicates."""
         logger.info("Activating window PID %s (exec: %s)", pid_str, exec_cmd)
         try:
             pid = int(pid_str)
         except (ValueError, TypeError):
             pid = 0
 
-        activated = False
-        if pid > 0:
-            # 1. Try KWin Scripting via D-Bus (native KDE Plasma 6 Wayland/X11)
+        # 1. First, check if this is a tray application (StatusNotifierItem like incy, firewall-applet, etc.)
+        try:
+            import dbus
+            bus = dbus.SessionBus()
+            snw = bus.get_object("org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher")
+            props = dbus.Interface(snw, "org.freedesktop.DBus.Properties")
+            registered = props.Get("org.kde.StatusNotifierWatcher", "RegisteredStatusNotifierItems")
+            dbus_obj = bus.get_object("org.freedesktop.DBus", "/org/freedesktop/DBus")
+            dbus_iface = dbus.Interface(dbus_obj, "org.freedesktop.DBus")
+
+            clean_cmd = os.path.basename(exec_cmd.split()[0]).lower() if exec_cmd else ""
+
+            for item in registered:
+                svc = item.split("/")[0]
+                path = "/" + item.split("/", 1)[1] if "/" in item else "/StatusNotifierItem"
+                try:
+                    c_pid = int(dbus_iface.GetConnectionUnixProcessID(svc))
+                except Exception:
+                    c_pid = 0
+
+                item_match = False
+                if pid > 0 and c_pid == pid:
+                    item_match = True
+                elif clean_cmd and clean_cmd in item.lower():
+                    item_match = True
+
+                if item_match:
+                    try:
+                        tray_obj = bus.get_object(svc, path)
+                        for if_name in ["org.kde.StatusNotifierItem", "org.freedesktop.StatusNotifierItem"]:
+                            try:
+                                item_iface = dbus.Interface(tray_obj, if_name)
+                                item_iface.Activate(0, 0)
+                                logger.info("Activated tray StatusNotifierItem: %s", item)
+                                return
+                            except Exception:
+                                pass
+                    except Exception as e:
+                        logger.debug("Failed to activate tray item %s: %s", item, e)
+        except Exception as e:
+            logger.debug("Tray check error: %s", e)
+
+        # 2. Try KWin Scripting via D-Bus (native KDE Plasma 6 Wayland/X11)
+        kwin_found = False
+        try:
+            import tempfile, dbus
+            clean_cmd = os.path.basename(exec_cmd.split()[0]).lower() if exec_cmd else ""
+            kwin_code = f"""
+            var windows = workspace.windowList();
+            var targetPid = {pid};
+            var targetName = "{clean_cmd}";
+            for (var i = 0; i < windows.length; i++) {{
+                var w = windows[i];
+                var match = false;
+                if (targetPid > 0 && w.pid == targetPid) {{
+                    match = true;
+                }} else if (targetName && ((w.resourceClass && w.resourceClass.toLowerCase().indexOf(targetName) !== -1) ||
+                                           (w.resourceName && w.resourceName.toLowerCase().indexOf(targetName) !== -1) ||
+                                           (w.caption && w.caption.toLowerCase().indexOf(targetName) !== -1))) {{
+                    match = true;
+                }}
+                if (match) {{
+                    if (w.minimized) {{
+                        w.minimized = false;
+                    }}
+                    workspace.activeWindow = w;
+                    workspace.raiseWindow(w);
+                    break;
+                }}
+            }}
+            """
+            with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
+                f.write(kwin_code)
+                tmp_path = f.name
+
             try:
-                import dbus
                 bus = dbus.SessionBus()
                 kwin_scripting = bus.get_object("org.kde.KWin", "/Scripting")
                 script_iface = dbus.Interface(kwin_scripting, "org.kde.kwin.Scripting")
-
-                kwin_code = f"""
-                var windows = workspace.windowList();
-                for (var i = 0; i < windows.length; i++) {{
-                    var w = windows[i];
-                    if (w.pid == {pid}) {{
-                        workspace.activeWindow = w;
-                        break;
-                    }}
-                }}
-                """
-                script_id = script_iface.loadScript("", kwin_code)
+                script_id = script_iface.loadScript(tmp_path)
                 script_obj = bus.get_object("org.kde.KWin", f"/Scripting/Script{script_id}")
                 script_run = dbus.Interface(script_obj, "org.kde.kwin.Script")
                 script_run.run()
-                script_run.stop()
-                activated = True
-            except Exception as e:
-                logger.debug("KWin script activation failed: %s", e)
+                try:
+                    script_iface.unloadScript(f"Script{script_id}")
+                except Exception:
+                    pass
+                kwin_found = True
+            finally:
+                if os.path.exists(tmp_path):
+                    try:
+                        os.remove(tmp_path)
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.debug("KWin script activation failed: %s", e)
 
-        # 2. Fallback: single-instance launch activation
-        if not activated and exec_cmd:
+        # 3. Only launch if not a running process/window
+        if not kwin_found and exec_cmd and pid == 0:
             self.launchApp(exec_cmd)
 
     @Slot(str)
@@ -673,3 +914,70 @@ class SystemService(QObject):
     @Property(int, notify=pomodoroCycleChanged)
     def pomodoroCycles(self) -> int:
         return self._pomodoro_cycles
+
+    # --- Hotkey Interactive Recording ---
+
+    @Property(str, notify=recordingActionChanged)
+    def recordingAction(self) -> str:
+        return self._recording_action
+
+    @Slot(str)
+    def startRecordingHotkey(self, action_id: str):
+        logger.info("Started hotkey recording for action: %s", action_id)
+        self._recording_action = action_id
+        self.recordingActionChanged.emit(self._recording_action)
+
+    @Slot()
+    def stopRecordingHotkey(self):
+        logger.info("Stopped hotkey recording")
+        self._recording_action = ""
+        self.recordingActionChanged.emit("")
+
+    # --- KDE Do Not Disturb (DND) Operations ---
+
+    @Property(bool, notify=doNotDisturbChanged)
+    def doNotDisturb(self) -> bool:
+        return self._do_not_disturb
+
+    @Slot()
+    def toggleDoNotDisturb(self):
+        try:
+            self._do_not_disturb = not self._do_not_disturb
+            self.config.set("do_not_disturb", self._do_not_disturb)
+            if self._do_not_disturb:
+                self.enable_do_not_disturb()
+            else:
+                self.restore_do_not_disturb()
+            self.doNotDisturbChanged.emit()
+        except Exception as e:
+            logger.error("Failed to toggle Do Not Disturb: %s", e)
+
+    def enable_do_not_disturb(self):
+        """Inhibits KDE Plasma desktop notifications."""
+        logger.info("Enabling KDE Plasma Do Not Disturb mode...")
+        try:
+            import dbus
+            bus = dbus.SessionBus()
+            notif = bus.get_object("org.freedesktop.Notifications", "/org/freedesktop/Notifications")
+            iface = dbus.Interface(notif, "org.freedesktop.Notifications")
+            self._dnd_cookie = int(iface.Inhibit("zatsu-focus", "Сессия глубокой концентрации Zatsu Focus", {}))
+            logger.info("D-Bus notification inhibition active (cookie: %s)", self._dnd_cookie)
+        except Exception as e:
+            logger.debug("Could not inhibit notifications via D-Bus: %s", e)
+
+    def restore_do_not_disturb(self):
+        """Restores notifications upon focus session exit."""
+        logger.info("Restoring KDE Plasma notifications...")
+        cookie = self._dnd_cookie
+        self._dnd_cookie = 0
+        if cookie > 0:
+            try:
+                import dbus
+                bus = dbus.SessionBus()
+                notif = bus.get_object("org.freedesktop.Notifications", "/org/freedesktop/Notifications")
+                iface = dbus.Interface(notif, "org.freedesktop.Notifications")
+                iface.UnInhibit(cookie)
+                logger.info("D-Bus notification uninhibited successfully (cookie: %s)", cookie)
+            except Exception as e:
+                logger.debug("Failed to UnInhibit notification: %s", e)
+
